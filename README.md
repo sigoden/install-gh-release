@@ -11,7 +11,7 @@ Providing install script is much more convenient than just a link to github rele
 You can add following content to your readme.
 
 ```md
-[install.sh](https://sigoden.github.io/install-gh-release/index.html?repo=sigoden/argc)
+[Manual Install](https://sigoden.github.io/install-gh-release/index.html?repo=sigoden/argc)
 ```
 
 The user click that, will see the install script.
