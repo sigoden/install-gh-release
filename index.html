@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Install-gh-relase</title>
+    <style>
+        html,
+        body,
+        div,
+        p {
+            margin: 0;
+            padding: 0;
+        }
+
+        .main {
+            margin: 10px;
+        }
+
+        .main>* {
+            padding-top: 80px;
+        }
+
+        .main>*:first-child {
+            padding-top: 0px;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        const OS = {
+            Win: "Win",
+            Linux: "Linux",
+            Mac: "Mac",
+            Unknown: "Unknown",
+        }
+        window.addEventListener('DOMContentLoaded', (event) => {
+            main()
+        });
+
+        async function main() {
+            const params = new URLSearchParams(location.search);
+            const repo = params.get("repo");
+            let scripts = [];
+            if (repo) {
+                scripts = await generate(repo);
+            }
+            if (scripts.length === 0) {
+                scripts = ["###### FAIL TO GENERATE SCRIPT ######"];
+            }
+            writeToHtml(scripts)
+        }
+
+        async function generate(repo) {
+            const [, name] = repo.split("/");
+            let assets = await getAssets(repo);
+            const os = detectOS();
+            const isArm = / arm/i.test(window.navigator.userAgent);
+            assets = assets.sort((b, a) => b.priority - a.priority);
+            const scripts = [];
+            if (os == OS.Win) {
+                let winAsset = assets.find(asset => asset.os === OS.Win && asset.is64 && asset.isArm === isArm);
+                if (winAsset) scripts.push(generateWinScript(winAsset, name, "###### WINDOWS INSTALLATION ######"));
+                let wslAsset = assets.find(asset => asset.os === OS.Linux && asset.is64 && asset.isArm === isArm)
+                if (wslAsset) scripts.push(generateScript(wslAsset, name, "###### WINDOWS WSL INSTALLATION ######"));
+            } else if (os === OS.Linux) {
+                let linuxAsset = assets.find(asset => asset.os === OS.Linux && asset.is64 && asset.isArm === isArm)
+                if (linuxAsset) scripts.push(generateScript(linuxAsset, name, "###### LINUX INSTALLATION ######"));
+            } else if (os === OS.Mac) {
+                let macAsset = assets.find(asset => asset.os === OS.Mac && asset.is64 && asset.isArm === isArm)
+                if (macAsset) scripts.push(generateScript(macAsset, name, "###### MACOS INSTALLATION ######"));
+            }
+            return scripts;
+        }
+
+
+        async function getAssets(repo) {
+            try {
+                const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`);
+                const data = await res.json();
+                return data.assets.map(rawAsset => {
+                    const asset = analysisAsset(rawAsset);
+                    if (!asset.version) asset.version = data.tag_name;
+                    return asset;
+                });
+            } catch {
+                return [];
+            }
+        }
+
+        function analysisAsset(asset) {
+            let filename = asset.name;
+            let url = asset.browser_download_url;
+            let text = filename;
+            let ext;
+            if (text.endsWith(".tar.gz")) {
+                text = text.slice(0, -7);
+                ext = "gzip";
+            } else if (text.endsWith(".zip")) {
+                text = text.slice(0, -4);
+                ext = "zip";
+            }
+            let elems = text.toLowerCase().replace("86_64", "64").replaceAll("_", "-").split("-");
+            const result = { filename, url, ext, isArm: false, is64: true, priority: 0, os: OS.Unknown };
+            for (const elem of elems) {
+                if (/\d+\.\d+/.test(elem)) {
+                    result.version = elem;
+                    continue;
+                }
+                switch (elem) {
+                    case "darwin":
+                    case "macos":
+                        result.os = OS.Mac;
+                        break;
+                    case "linux":
+                        result.os = OS.Linux;
+                        break;
+                    case "windows":
+                        result.os = OS.Win;
+                        break;
+                    case "msvc":
+                        result.priority = 1;
+                        break;
+                    case "gnu":
+                    case "gnueabihf":
+                        break;
+                    case "musl":
+                        result.priority = 1;
+                        break;
+                    case "arm":
+                    case "armv7":
+                        result.isArm = true;
+                    case "arm64":
+                    case "aarch64":
+                    case "aarch64":
+                        result.isArm = true;
+                        result.is64 = true;
+                        break;
+                    case "i686":
+                    case "686":
+                    case "i386":
+                    case "386":
+                    case "32":
+                    case "x32":
+                        result.is64 = false;
+                        break;
+                    case "amd64":
+                    case "64":
+                    case "x64":
+                        result.is64 = true;
+                        break;
+                }
+            }
+            return result;
+        }
+
+        function generateWinScript(asset, name, title) {
+            return `${title}
+$download = $env:USERPROFILE + "\\Downloads"
+$zipfile = $download + "\\${asset.filename}"
+Invoke-WebRequest "${asset.url}" -OutFile $zipfile
+$targetdir = "C:\\tools";
+$name = "${name}.exe"
+$targetfile = $targetdir + "\\" + $name
+Add-Type -Assembly System.IO.Compression.FileSystem
+$zip = [IO.Compression.ZipFile]::OpenRead($zipfile)
+$zip.Entries | where {$_.Name -eq $name} | foreach {[System.IO.Compression.ZipFileExtensions]::ExtractToFile($_, $targetfile, $true)}
+$zip.Dispose()
+Remove-Item -Path $zipfile
+`;
+        }
+
+        function generateScript(asset, name, title) {
+            return `${title}
+wget -O ${asset.filename} "${asset.url}"
+tar -xf ${asset.filename} ${name}
+sudo mv ${name} /usr/local/bin/
+rm -rf ${asset.filename}`;
+        }
+
+
+        function detectOS() {
+            const { platform } = window.navigator;
+            if (/^Win/.test(platform)) {
+                return OS.Win
+            }
+            if (/^Mac/.test(platform)) {
+                return OS.Mac
+            }
+            return OS.Linux
+        }
+
+
+        function writeToHtml(scripts) {
+            const body = document.body;
+            let div = document.createElement("div");
+            div.classList.add("main");
+            for (const script of scripts) {
+                const div2 = document.createElement("div");
+                const lines = script.split("\n");
+                for (const line of lines) {
+                    if (line.length === 0) {
+                        const br = document.createElement("br")
+                        div2.appendChild(br);
+                    } else {
+                        const p = document.createElement("p");
+                        p.innerHTML = line;
+                        div2.appendChild(p);
+                    }
+                }
+                div.appendChild(div2);
+            }
+            body.appendChild(div);
+        }
+    </script>
+
+</body>
+
+</html>
