@@ -169,8 +169,7 @@
 
         function generatewinScript(asset, name, title) {
             return `<div>
-<p># download.ps1</p>
-<p>Invoke-WebRequest -OutFile ${asset.filename} -Uri <a href="${asset.url}">${asset.url}</a><p>
+<p><a href="${asset.url}">${asset.url}</a></p>
 </div>`
         }
 
