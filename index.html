@@ -20,7 +20,7 @@
         }
 
         .main>* {
-            padding-top: 80px;
+            padding-top: 60px;
         }
 
         .main>*:first-child {
@@ -32,10 +32,9 @@
 <body>
     <script>
         const OS = {
-            Win: "Win",
-            Linux: "Linux",
-            Mac: "Mac",
-            Unknown: "Unknown",
+            win: "win",
+            linux: "linux",
+            macos: "macos",
         }
         window.addEventListener('DOMContentLoaded', (event) => {
             main()
@@ -45,32 +44,34 @@
             const params = new URLSearchParams(location.search);
             const repo = params.get("repo");
             let scripts = [];
-            if (repo) {
-                scripts = await generate(repo);
+            const os = params.get("os") || detectOS();
+            if (/^([A-Za-z0-9_-])+\/([A-Za-z0-9_-])+$/.test(repo)) {
+                scripts = await generate(repo, os);
             }
             if (scripts.length === 0) {
-                scripts = ["###### FAIL TO GENERATE SCRIPT ######"];
+                scripts = [
+                    generateError("###### FAIL TO GENERATE SCRIPT ######")
+                ];
             }
-            writeToHtml(scripts)
+            writeToHtml(repo, scripts)
         }
 
-        async function generate(repo) {
+        async function generate(repo, os) {
             const [, name] = repo.split("/");
             let assets = await getAssets(repo);
-            const os = detectOS();
             const isArm = / arm/i.test(window.navigator.userAgent);
             assets = assets.sort((b, a) => b.priority - a.priority);
             const scripts = [];
-            if (os == OS.Win) {
-                let winAsset = assets.find(asset => asset.os === OS.Win && asset.is64 && asset.isArm === isArm);
-                if (winAsset) scripts.push(generateWinScript(winAsset, name, "###### WINDOWS INSTALLATION ######"));
-                let wslAsset = assets.find(asset => asset.os === OS.Linux && asset.is64 && asset.isArm === isArm)
+            if (os == OS.win) {
+                let winAsset = assets.find(asset => asset.os === OS.win && asset.is64 && asset.isArm === isArm);
+                if (winAsset) scripts.push(generatewinScript(winAsset, name, "###### WINDOWS INSTALLATION ######"));
+                let wslAsset = assets.find(asset => asset.os === OS.linux && asset.is64 && asset.isArm === isArm)
                 if (wslAsset) scripts.push(generateScript(wslAsset, name, "###### WINDOWS WSL INSTALLATION ######"));
-            } else if (os === OS.Linux) {
-                let linuxAsset = assets.find(asset => asset.os === OS.Linux && asset.is64 && asset.isArm === isArm)
+            } else if (os === OS.linux) {
+                let linuxAsset = assets.find(asset => asset.os === OS.linux && asset.is64 && asset.isArm === isArm)
                 if (linuxAsset) scripts.push(generateScript(linuxAsset, name, "###### LINUX INSTALLATION ######"));
-            } else if (os === OS.Mac) {
-                let macAsset = assets.find(asset => asset.os === OS.Mac && asset.is64 && asset.isArm === isArm)
+            } else if (os === OS.macos) {
+                let macAsset = assets.find(asset => asset.os === OS.macos && asset.is64 && asset.isArm === isArm)
                 if (macAsset) scripts.push(generateScript(macAsset, name, "###### MACOS INSTALLATION ######"));
             }
             return scripts;
@@ -86,7 +87,8 @@
                     if (!asset.version) asset.version = data.tag_name;
                     return asset;
                 });
-            } catch {
+            } catch (err) {
+                console.error(err);
                 return [];
             }
         }
@@ -98,13 +100,19 @@
             let ext;
             if (text.endsWith(".tar.gz")) {
                 text = text.slice(0, -7);
-                ext = "gzip";
-            } else if (text.endsWith(".zip")) {
-                text = text.slice(0, -4);
-                ext = "zip";
+                ext = ".tar.gz";
+            } else {
+                let idx = text.lastIndexOf(".");
+                if (idx > -1 && text.length - idx <= 4) {
+                    ext = text.slice(idx + 1);
+                    text = text.slice(0, idx);
+                }
             }
             let elems = text.toLowerCase().replace("86_64", "64").replaceAll("_", "-").split("-");
-            const result = { filename, url, ext, isArm: false, is64: true, priority: 0, os: OS.Unknown };
+            const result = { filename, url, ext, isArm: false, is64: true, priority: 0 };
+            if ([".tar.gz", ".zip"].indexOf(ext)) {
+                result.priority -= 1;
+            }
             for (const elem of elems) {
                 if (/\d+\.\d+/.test(elem)) {
                     result.version = elem;
@@ -113,22 +121,22 @@
                 switch (elem) {
                     case "darwin":
                     case "macos":
-                        result.os = OS.Mac;
+                        result.os = OS.macos;
                         break;
                     case "linux":
-                        result.os = OS.Linux;
+                        result.os = OS.linux;
                         break;
                     case "windows":
-                        result.os = OS.Win;
+                        result.os = OS.win;
                         break;
                     case "msvc":
-                        result.priority = 1;
+                        result.priority = 2;
                         break;
                     case "gnu":
                     case "gnueabihf":
                         break;
                     case "musl":
-                        result.priority = 1;
+                        result.priority = 2;
                         break;
                     case "arm":
                     case "armv7":
@@ -157,63 +165,57 @@
             return result;
         }
 
-        function generateWinScript(asset, name, title) {
-            return `${title}
-$download = $env:USERPROFILE + "\\Downloads"
-$zipfile = $download + "\\${asset.filename}"
-Invoke-WebRequest "${asset.url}" -OutFile $zipfile
-$targetdir = "C:\\tools";
-$name = "${name}.exe"
-$targetfile = $targetdir + "\\" + $name
-Add-Type -Assembly System.IO.Compression.FileSystem
-$zip = [IO.Compression.ZipFile]::OpenRead($zipfile)
-$zip.Entries | where {$_.Name -eq $name} | foreach {[System.IO.Compression.ZipFileExtensions]::ExtractToFile($_, $targetfile, $true)}
-$zip.Dispose()
-Remove-Item -Path $zipfile
-`;
+        function generatewinScript(asset, name, title) {
+            return `<div>
+<p>${title}</p>
+<a href="${asset.url}">${asset.url}</a>
+</div>`
         }
 
         function generateScript(asset, name, title) {
-            return `${title}
-wget -O ${asset.filename} "${asset.url}"
-tar -xf ${asset.filename} ${name}
-sudo mv ${name} /usr/local/bin/
-rm -rf ${asset.filename}`;
+            return `<div>
+<p>${title}</p>
+<p>wget -O ${asset.filename} <a href="${asset.url}">${asset.url}</a></p>
+<p>tar -xf ${asset.filename} ${name}</p>
+<p>sudo mv ${name} /usr/local/bin/</p>
+<p>rm -rf ${asset.filename}</p>
+</div>`;
+        }
+
+        function generateError(message) {
+            return `<div>
+<p>${message}</p>
+</div>`
         }
 
 
         function detectOS() {
             const { platform } = window.navigator;
-            if (/^Win/.test(platform)) {
-                return OS.Win
+            if (/^win/i.test(platform)) {
+                return OS.win
             }
-            if (/^Mac/.test(platform)) {
-                return OS.Mac
+            if (/^mac/i.test(platform)) {
+                return OS.macos
             }
-            return OS.Linux
+            return OS.linux
         }
 
 
-        function writeToHtml(scripts) {
+        function writeToHtml(repo, scripts) {
             const body = document.body;
-            let div = document.createElement("div");
+            const div = document.createElement("div");
             div.classList.add("main");
             for (const script of scripts) {
-                const div2 = document.createElement("div");
-                const lines = script.split("\n");
-                for (const line of lines) {
-                    if (line.length === 0) {
-                        const br = document.createElement("br")
-                        div2.appendChild(br);
-                    } else {
-                        const p = document.createElement("p");
-                        p.innerHTML = line;
-                        div2.appendChild(p);
-                    }
-                }
-                div.appendChild(div2);
+                let node = htmlToElement(script);
+                div.appendChild(node);
             }
             body.appendChild(div);
+        }
+        function htmlToElement(html) {
+            const template = document.createElement('template');
+            html = html.trim();
+            template.innerHTML = html;
+            return template.content.firstChild;
         }
     </script>
 

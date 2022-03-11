@@ -15,3 +15,9 @@ You can add following content to your readme.
 ```
 
 The user click that, will see the install script.
+
+## Parameters
+
+Parameters are provided in the form of url query
+
+- `repo`:  github repository name, e.g. `sigoden/argc`
