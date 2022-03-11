@@ -20,7 +20,7 @@
         }
 
         .main>* {
-            padding-top: 60px;
+            padding-top: 40px;
         }
 
         .main>*:first-child {
@@ -31,6 +31,8 @@
 
 <body>
     <script>
+
+        const HOME = "https://github.com/sigoden/install-gh-release";
         const OS = {
             win: "win",
             linux: "linux",
@@ -47,11 +49,11 @@
             const os = params.get("os") || detectOS();
             if (/^([A-Za-z0-9_-])+\/([A-Za-z0-9_-])+$/.test(repo)) {
                 scripts = await generate(repo, os);
-            }
-            if (scripts.length === 0) {
-                scripts = [
-                    generateError("###### FAIL TO GENERATE SCRIPT ######")
-                ];
+                if (scripts.length === 0) {
+                    scripts.push(generateFallback(repo));
+                }
+            } else {
+                scripts.push(generateError());
             }
             writeToHtml(repo, scripts)
         }
@@ -64,15 +66,15 @@
             const scripts = [];
             if (os == OS.win) {
                 let winAsset = assets.find(asset => asset.os === OS.win && asset.is64 && asset.isArm === isArm);
-                if (winAsset) scripts.push(generatewinScript(winAsset, name, "###### WINDOWS INSTALLATION ######"));
+                if (winAsset) scripts.push(generatewinScript(winAsset, name));
                 let wslAsset = assets.find(asset => asset.os === OS.linux && asset.is64 && asset.isArm === isArm)
-                if (wslAsset) scripts.push(generateScript(wslAsset, name, "###### WINDOWS WSL INSTALLATION ######"));
+                if (wslAsset) scripts.push(generateScript(wslAsset, name, "# install.sh for wsl"));
             } else if (os === OS.linux) {
                 let linuxAsset = assets.find(asset => asset.os === OS.linux && asset.is64 && asset.isArm === isArm)
-                if (linuxAsset) scripts.push(generateScript(linuxAsset, name, "###### LINUX INSTALLATION ######"));
+                if (linuxAsset) scripts.push(generateScript(linuxAsset, name, "# install.sh"));
             } else if (os === OS.macos) {
                 let macAsset = assets.find(asset => asset.os === OS.macos && asset.is64 && asset.isArm === isArm)
-                if (macAsset) scripts.push(generateScript(macAsset, name, "###### MACOS INSTALLATION ######"));
+                if (macAsset) scripts.push(generateScript(macAsset, name, "# install.sh"));
             }
             return scripts;
         }
@@ -167,8 +169,8 @@
 
         function generatewinScript(asset, name, title) {
             return `<div>
-<p>${title}</p>
-<a href="${asset.url}">${asset.url}</a>
+<p># download.ps1</p>
+<p>Invoke-WebRequest -OutFile ${asset.filename} -Uri <a href="${asset.url}">${asset.url}</a><p>
 </div>`
         }
 
@@ -182,9 +184,16 @@
 </div>`;
         }
 
-        function generateError(message) {
+        function generateFallback(repo) {
+            const url = `https://github.com/${repo}/releases`
             return `<div>
-<p>${message}</p>
+<p># no install.sh, see <a href="${url}">github releases</a></p>
+</div>`
+        }
+
+        function generateError() {
+            return `<div>
+<p># error, see <a href="${HOME}">install-gh-release</a></p>
 </div>`
         }
 
