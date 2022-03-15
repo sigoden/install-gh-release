@@ -66,9 +66,9 @@
             const scripts = [];
             if (os == OS.win) {
                 let winAsset = assets.find(asset => asset.os === OS.win && asset.is64 && asset.isArm === isArm);
-                if (winAsset) scripts.push(generatewinScript(winAsset, name));
+                if (winAsset) scripts.push(generateWinScript(winAsset, name, "# guide"));
                 let wslAsset = assets.find(asset => asset.os === OS.linux && asset.is64 && asset.isArm === isArm)
-                if (wslAsset) scripts.push(generateScript(wslAsset, name, "# install.sh for wsl"));
+                if (wslAsset) scripts.push(generateScript(wslAsset, name, "# wsl-install.sh"));
             } else if (os === OS.linux) {
                 let linuxAsset = assets.find(asset => asset.os === OS.linux && asset.is64 && asset.isArm === isArm)
                 if (linuxAsset) scripts.push(generateScript(linuxAsset, name, "# install.sh"));
@@ -167,9 +167,11 @@
             return result;
         }
 
-        function generatewinScript(asset, name, title) {
+        function generateWinScript(asset, name, title) {
             return `<div>
-<p><a href="${asset.url}">${asset.url}</a></p>
+<p>${title}</p>
+<p>download <a href="${asset.url}">${asset.url}</a></p>
+<p>extract ${name}.exe then run </p>
 </div>`
         }
 
